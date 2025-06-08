@@ -1,1 +1,3 @@
 # publish-bicep-registry
+
+- hello
