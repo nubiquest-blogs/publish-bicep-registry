@@ -1,0 +1,85 @@
+trigger:
+  branches:
+    include:
+      - main
+  paths:
+    include:
+      - ci-cd/iac
+      
+parameters:
+  - name: location
+    displayName: "Location"
+    type: string
+    default: "East US"
+    values:
+      - "East US"
+
+  - name: pool
+    displayName: "Agent Pool"
+    type: string
+    default: "Azure Pipelines"
+    values:
+      - "Azure Pipelines"
+      - "SelfPool"         
+
+  - name: serviceConnection
+    displayName: "Service Connection Name"
+    type: string
+
+
+variables:
+
+  - group: plc-dev
+
+  - name: bicepTemplatePath
+    value: 'ci-cd/iac/core.bicep'
+
+  - name: containerRegistry
+    value: "[YOUR-REGISTRY].azurecr.io"
+
+  - name: vmImage
+    value: "ubuntu-latest"
+
+
+stages:
+
+  - stage: PublishBiceps
+    displayName: "[Core] Publish Biceps"
+    jobs:
+      - job: PublishBiceps
+        displayName: "[INFRA] Publish Biceps"
+        pool:
+          name: ${{ parameters.pool }}
+          vmImage: $(vmImage)
+        steps:
+
+          - task: AzureCLI@2
+            displayName: "Publish Bicep Modules to ACR"
+            inputs:
+              azureSubscription: ${{ parameters.serviceConnection }}
+              scriptType: bash
+              scriptLocation: inlineScript
+              inlineScript: |
+                az bicep install
+
+                az config set bicep.use_binary_from_path=False
+
+
+                find ci-cd/iac/modules -type f | while read -r file; do
+                  echo "Publishing $file to ACR..."
+                  filename=$(basename "$file")
+                  basename=${filename%.*}  # Remove extension
+      
+                  # Extract parts
+                  moduleName=$(echo "$basename" | cut -d'.' -f1)
+                  moduleVersion=$(echo "$basename" | cut -d'.' -f2)
+                  moduleParent=$(basename $(dirname "$file"))
+      
+
+                  az bicep publish --file "$file" --target "br:$(containerRegistry)/bm/$moduleParent/$moduleName:$moduleVersion" --force
+      
+                  echo "-----"
+                done
+
+        
+  
